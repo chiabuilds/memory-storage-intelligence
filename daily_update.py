@@ -88,12 +88,12 @@ def analyze_with_claude(df: pd.DataFrame) -> dict:
                 "Return this exact JSON structure:\n"
                 "{\n"
                 '  "supply_signal": "stronger" | "weaker" | "same",\n'
-                '  "supply_detail": "one sentence explaining ROOT CAUSE of supply signal",\n'
+                '  "supply_detail": "one sentence explaining ROOT CAUSE, bold 1-2 key terms with **bold**",\n'
                 '  "demand_signal": "stronger" | "weaker" | "same",\n'
-                '  "demand_detail": "one sentence explaining ROOT CAUSE of demand signal",\n'
+                '  "demand_detail": "one sentence explaining ROOT CAUSE, bold 1-2 key terms with **bold**",\n'
                 '  "net": "bullish" | "bearish" | "balanced",\n'
                 '  "score": <integer 1-100, MUST follow scoring logic above>,\n'
-                '  "key_takeaway": "2-3 sentence executive summary that MUST align with net and score, use [N] citations",\n'
+                '  "key_takeaway": "2-3 sentence executive summary that MUST align with net and score, bold 2-3 key terms with **bold**, use [N] citations",\n'
                 '  "sections": [\n'
                 '    {"title": "Key Price Trends (DRAM, NAND)", "points": ["**Bold label**: description with citation [1]", ...]},\n'
                 '    {"title": "Supply Chain Signals", "points": ["**Bold label**: description"]},\n'
@@ -141,6 +141,10 @@ def strip_bold_after_colon(text: str) -> str:
         after = re.sub(r"\*\*(.+?)\*\*", r"\1", after)
         return f"{before}: {after}"
     return text
+
+
+def bold_to_html(text: str) -> str:
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
 
 
 def md_to_html(text: str, articles: pd.DataFrame) -> str:
@@ -252,8 +256,8 @@ def build_html(result: dict, date_str: str) -> str:
       <div style="background:{color};color:white;padding:16px 20px;border-radius:8px;">
         <div style="font-size:13px;letter-spacing:1px;opacity:0.85;">SUPPLY: {supply} &nbsp;|&nbsp; DEMAND: {demand} &nbsp;→&nbsp; NET</div>
         <div style="font-size:24px;font-weight:bold;margin-top:4px;">{net_label} &nbsp; <span style="font-size:20px;">{score}/100</span></div>
-        <div style="font-size:13px;margin-top:10px;opacity:0.9;">&#8226; Supply: {result.get('supply_detail', '')}</div>
-        <div style="font-size:13px;opacity:0.9;">&#8226; Demand: {result.get('demand_detail', '')}</div>
+        <div style="font-size:13px;margin-top:10px;opacity:0.9;">&#8226; Supply: {bold_to_html(result.get('supply_detail', ''))}</div>
+        <div style="font-size:13px;opacity:0.9;">&#8226; Demand: {bold_to_html(result.get('demand_detail', ''))}</div>
       </div>
 
       <div style="background:#f5f5f5;border-left:4px solid {color};padding:12px 16px;margin:16px 0;">
