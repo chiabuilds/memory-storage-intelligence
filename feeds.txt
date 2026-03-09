@@ -1,0 +1,5 @@
+https://news.google.com/rss/search?q=dram+price
+https://news.google.com/rss/search?q=nand+flash+market
+https://news.google.com/rss/search?q=semiconductor+supply+chain
+https://news.google.com/rss/search?q=ai+server+demand
+https://news.google.com/rss/search?q=micron+sk+hynix+samsung+memory
