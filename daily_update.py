@@ -4,6 +4,7 @@ import anthropic
 import smtplib
 import os
 import re
+import json
 from datetime import datetime, timezone, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,7 +12,7 @@ from email.utils import parsedate_to_datetime
 
 FEEDS_FILE = "feeds.txt"
 RECIPIENT_EMAIL = "chiabuilds@gmail.com"
-SENDER_EMAIL = "austinkhchia@gmail.com"
+SENDER_EMAIL = "chiabuilds@gmail.com"
 WINDOW_HOURS = 24
 
 NET_COLORS = {

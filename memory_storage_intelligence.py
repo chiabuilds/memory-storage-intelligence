@@ -12,7 +12,8 @@ from email.utils import parsedate_to_datetime
 
 FEEDS_FILE = "feeds.txt"
 RECIPIENT_EMAIL = "chiabuilds@gmail.com"
-SENDER_EMAIL = "austinkhchia@gmail.com"
+SENDER_EMAIL = "chiabuilds@gmail.com"
+WINDOW_DAYS = 3
 
 NET_COLORS = {
     "bullish": "#c0392b",
@@ -25,9 +26,6 @@ NET_LABELS = {
     "bearish": "▼ BEARISH",
     "balanced": "◆ BALANCED",
 }
-
-CURRENT_DAYS = 3   # current window: last N days
-PRIOR_DAYS = 7     # prior window: N days before current window
 
 
 def load_feeds(path: str) -> list[str]:
@@ -58,30 +56,12 @@ def fetch_articles(feed_urls: list[str]) -> pd.DataFrame:
                 "link": entry.get("link", ""),
                 "published": entry.get("published", ""),
                 "summary": entry.get("summary", ""),
-                "source": feed.feed.get("title", url),
                 "outlet": extract_outlet(title),
             })
     df = pd.DataFrame(articles)
     df["pub_dt"] = df["published"].apply(parse_pub_date)
-    return df
-
-
-def split_windows(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, tuple, tuple]:
-    now = datetime.now(timezone.utc)
-    current_start = now - timedelta(days=CURRENT_DAYS)
-    prior_end = current_start
-    prior_start = current_start - timedelta(days=PRIOR_DAYS)
-
-    current_df = df[df["pub_dt"] >= current_start].copy().reset_index(drop=True)
-    prior_df = df[(df["pub_dt"] >= prior_start) & (df["pub_dt"] < prior_end)].copy().reset_index(drop=True)
-
-    def fmt_range(d: pd.DataFrame) -> tuple[str, str]:
-        dates = d["pub_dt"].dropna()
-        if dates.empty:
-            return "N/A", "N/A"
-        return dates.min().strftime("%b %d"), dates.max().strftime("%b %d")
-
-    return current_df, prior_df, fmt_range(current_df), fmt_range(prior_df)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
+    return df[df["pub_dt"] >= cutoff].reset_index(drop=True)
 
 
 def analyze_with_claude(df: pd.DataFrame) -> dict:
@@ -103,23 +83,22 @@ def analyze_with_claude(df: pd.DataFrame) -> dict:
                 "- Supply WEAKER (manufacturers cutting/constraining output) + Demand STRONGER = prices RISE = BULLISH (score 60-100)\n"
                 "- Supply STRONGER (oversupply) + Demand WEAKER = prices FALL = BEARISH (score 1-40)\n"
                 "- Mixed signals = BALANCED (score 40-60)\n"
-                "- 'supply_signal' refers to SUPPLY AVAILABILITY: 'weaker' = less supply available, 'stronger' = more supply available\n"
                 "- Rising prices, tight supply, strong demand = BULLISH for manufacturers\n"
                 "- Falling prices, oversupply, weak demand = BEARISH for manufacturers\n\n"
                 "Return this exact JSON structure:\n"
                 "{\n"
                 '  "supply_signal": "stronger" | "weaker" | "same",\n'
-                '  "supply_detail": "one sentence explaining ROOT CAUSE of supply signal (which manufacturers, capacity, inventory)",\n'
+                '  "supply_detail": "one sentence explaining ROOT CAUSE of supply signal (no markdown bold)",\n'
                 '  "demand_signal": "stronger" | "weaker" | "same",\n'
-                '  "demand_detail": "one sentence explaining ROOT CAUSE of demand signal (which sectors, applications)",\n'
+                '  "demand_detail": "one sentence explaining ROOT CAUSE of demand signal (no markdown bold)",\n'
                 '  "net": "bullish" | "bearish" | "balanced",\n'
                 '  "score": <integer 1-100, MUST follow scoring logic above>,\n'
                 '  "key_takeaway": "2-3 sentence executive summary that MUST align with net and score, use [N] citations",\n'
                 '  "sections": [\n'
-                '    {"title": "Key Price Trends (DRAM, NAND)", "points": ["point with **bold key terms** and citation [1]", ...]},\n'
-                '    {"title": "Supply Chain Signals", "points": ["point with **bold key terms**"]},\n'
-                '    {"title": "Demand Drivers", "points": ["point with **bold key terms**"]},\n'
-                '    {"title": "Notable Vendor Developments", "points": ["point with **bold key terms**"]}\n'
+                '    {"title": "Key Price Trends (DRAM, NAND)", "points": ["**Bold label**: description with citation [1]", ...]},\n'
+                '    {"title": "Supply Chain Signals", "points": ["**Bold label**: description"]},\n'
+                '    {"title": "Demand Drivers", "points": ["**Bold label**: description"]},\n'
+                '    {"title": "Notable Vendor Developments", "points": ["**Bold label**: description"]}\n'
                 '  ],\n'
                 '  "cited_indices": [1, 3, 5]\n'
                 "}\n\n"
@@ -136,36 +115,6 @@ def analyze_with_claude(df: pd.DataFrame) -> dict:
     result = json.loads(json_match.group())
     result["articles"] = articles
     return result
-
-
-def analyze_score_only(df: pd.DataFrame) -> dict:
-    """Lightweight Claude call for prior window — score + net only."""
-    client = anthropic.Anthropic()
-    articles = df.head(50).reset_index(drop=True)
-    headlines = "\n".join(
-        f"[{i+1}] {row['title']} | {row['outlet']} | {row['published']}"
-        for i, (_, row) in enumerate(articles.iterrows())
-    )
-
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=256,
-        messages=[{
-            "role": "user",
-            "content": (
-                "You are a semiconductor market analyst. Score these headlines from a MANUFACTURER/INVESTOR perspective.\n"
-                "SCORING: tight supply + strong demand = BULLISH (60-100). Oversupply + weak demand = BEARISH (1-40). Mixed = BALANCED (40-60).\n"
-                "Return ONLY: {\"net\": \"bullish\"|\"bearish\"|\"balanced\", \"score\": <1-100>}\n\n"
-                f"Headlines:\n{headlines}"
-            ),
-        }],
-    )
-
-    raw = message.content[0].text
-    json_match = re.search(r"\{.*?\}", raw, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group())
-    return {"net": "balanced", "score": 50}
 
 
 def build_footnotes(articles: pd.DataFrame, cited_indices: list[int]) -> dict:
@@ -187,7 +136,6 @@ def build_footnotes(articles: pd.DataFrame, cited_indices: list[int]) -> dict:
 
 
 def strip_bold_after_colon(text: str) -> str:
-    """Keep bold before first colon, remove bold markers after it."""
     if ": " in text:
         before, after = text.split(": ", 1)
         after = re.sub(r"\*\*(.+?)\*\*", r"\1", after)
@@ -196,7 +144,6 @@ def strip_bold_after_colon(text: str) -> str:
 
 
 def md_to_html(text: str, articles: pd.DataFrame) -> str:
-    """Convert markdown bold and citations to HTML."""
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     def replace(match):
         idx = int(match.group(1))
@@ -207,39 +154,25 @@ def md_to_html(text: str, articles: pd.DataFrame) -> str:
     return re.sub(r"\[(\d+)\]", replace, text)
 
 
-def fmt_score_line(curr_score: int, curr_range: tuple, prior_score: int | None, prior_range: tuple | None) -> tuple[str, str]:
-    curr_label = f"{curr_range[0]} to {curr_range[1]}"
-    if prior_score is not None and prior_range and prior_range[0] != "N/A":
-        prior_label = f"{prior_range[0]} to {prior_range[1]}"
-        delta = curr_score - prior_score
-        arrow = "▲" if delta > 0 else "▼" if delta < 0 else "→"
-        md = f"**Prior ({prior_label}): {prior_score} → Current ({curr_label}): {curr_score}** _{arrow} {delta:+d}_"
-        html = (
-            f'<span style="font-size:16px;font-weight:bold;">'
-            f'Prior ({prior_label}): {prior_score} &nbsp;→&nbsp; Current ({curr_label}): {curr_score}'
-            f'</span>'
-            f'&nbsp;<span style="font-size:13px;">{arrow} <sup>{delta:+d}</sup></span>'
-        )
-    else:
-        md = f"**Current ({curr_label}): {curr_score}/100** _(no prior data)_"
-        html = f'<span style="font-size:16px;font-weight:bold;">Current ({curr_label}): {curr_score}/100</span> <span style="font-size:12px;color:#ccc;">(no prior data)</span>'
-    return md, html
+def bold_to_html(text: str) -> str:
+    """Convert markdown bold to HTML without citation linking."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
 
 
-def build_markdown(result: dict, date_str: str, curr_range: tuple, prior_score: int | None, prior_range: tuple | None) -> str:
+def build_markdown(result: dict, date_str: str, date_range: tuple) -> str:
     net = result["net"]
     supply = result.get("supply_signal", "same").upper()
     demand = result.get("demand_signal", "same").upper()
     net_label = NET_LABELS[net]
+    score = result.get("score", 50)
     articles = result["articles"]
     footnotes_by_outlet = build_footnotes(articles, result.get("cited_indices", []))
-    score = result.get("score", 50)
-    score_md, _ = fmt_score_line(score, curr_range, prior_score, prior_range)
+    range_label = f"{date_range[0]} to {date_range[1]}"
 
     lines = [
-        f"# Memory & Storage Market Update — {date_str}",
+        f"# Memory & Storage Market Update — {date_str} (Past 3 Days: {range_label})",
         f"\n## Supply: {supply} | Demand: {demand} → Net: {net_label}",
-        score_md,
+        f"**Score: {score}/100**",
         f"- **Supply:** {result.get('supply_detail', '')}",
         f"- **Demand:** {result.get('demand_detail', '')}\n",
         f"### Key Takeaway\n{result['key_takeaway']}\n",
@@ -268,20 +201,23 @@ def build_markdown(result: dict, date_str: str, curr_range: tuple, prior_score: 
     return "\n".join(lines)
 
 
-def build_html(result: dict, date_str: str, curr_range: tuple, prior_score: int | None, prior_range: tuple | None) -> str:
+def build_html(result: dict, date_str: str, date_range: tuple) -> str:
     net = result["net"]
     color = NET_COLORS[net]
     net_label = NET_LABELS[net]
     supply = result.get("supply_signal", "same").upper()
     demand = result.get("demand_signal", "same").upper()
+    score = result.get("score", 50)
     articles = result["articles"]
     footnotes_by_outlet = build_footnotes(articles, result.get("cited_indices", []))
-    score = result.get("score", 50)
-    _, score_html = fmt_score_line(score, curr_range, prior_score, prior_range)
+    range_label = f"{date_range[0]} to {date_range[1]}"
 
     sections_html = ""
     for section in result["sections"]:
-        points = "".join(f"<li>{md_to_html(strip_bold_after_colon(p), articles)}</li>" for p in section["points"])
+        points = "".join(
+            f"<li>{md_to_html(strip_bold_after_colon(p), articles)}</li>"
+            for p in section["points"]
+        )
         sections_html += f"<h2 style='color:#1a1a2e;'>{section['title']}</h2><ul>{points}</ul>"
 
     rows = ""
@@ -318,12 +254,11 @@ def build_html(result: dict, date_str: str, curr_range: tuple, prior_score: int 
     return f"""
     <html><body style="font-family:Arial,sans-serif;max-width:700px;margin:auto;padding:20px;">
       <h1 style="color:#1a1a2e;">Memory & Storage Market Update</h1>
-      <p style="color:#888;">{date_str}</p>
+      <p style="color:#888;">{date_str} &nbsp;|&nbsp; Past 3 Days: {range_label}</p>
 
       <div style="background:{color};color:white;padding:16px 20px;border-radius:8px;">
         <div style="font-size:13px;letter-spacing:1px;opacity:0.85;">SUPPLY: {supply} &nbsp;|&nbsp; DEMAND: {demand} &nbsp;→&nbsp; NET</div>
-        <div style="font-size:24px;font-weight:bold;margin-top:4px;">{net_label}</div>
-        <div style="margin-top:8px;">{score_html}</div>
+        <div style="font-size:24px;font-weight:bold;margin-top:4px;">{net_label} &nbsp; <span style="font-size:20px;">{score}/100</span></div>
         <div style="font-size:13px;margin-top:10px;opacity:0.9;">&#8226; Supply: {result.get('supply_detail', '')}</div>
         <div style="font-size:13px;opacity:0.9;">&#8226; Demand: {result.get('demand_detail', '')}</div>
       </div>
@@ -340,7 +275,7 @@ def build_html(result: dict, date_str: str, curr_range: tuple, prior_score: int 
       {footnotes_html}
 
       <hr>
-      <p style="color:#aaa;font-size:12px;">Generated by sourcing-intelligence script</p>
+      <p style="color:#aaa;font-size:12px;">Generated by memory-storage-intelligence script</p>
     </body></html>
     """
 
@@ -364,41 +299,32 @@ def send_email(subject: str, markdown_body: str, html_body: str):
     print(f"Email sent to {RECIPIENT_EMAIL}")
 
 
+def get_date_range(articles: pd.DataFrame) -> tuple[str, str]:
+    dates = articles["pub_dt"].dropna()
+    if dates.empty:
+        today = datetime.now().strftime("%b %d")
+        return today, today
+    return dates.min().strftime("%b %d"), dates.max().strftime("%b %d")
+
+
 def main():
     date_str = datetime.now().strftime("%Y-%m-%d")
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Fetching feeds...")
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Fetching past 3 days of articles...")
 
     feed_urls = load_feeds(FEEDS_FILE)
     df = fetch_articles(feed_urls)
-    print(f"Fetched {len(df)} articles from {len(feed_urls)} feeds.")
+    print(f"Found {len(df)} articles in past 3 days.\n")
 
     if df.empty:
         print("No articles found.")
         return
 
-    current_df, prior_df, curr_range, prior_range = split_windows(df)
-    print(f"Current window ({curr_range[0]} to {curr_range[1]}): {len(current_df)} articles")
-    print(f"Prior window ({prior_range[0]} to {prior_range[1]}): {len(prior_df)} articles\n")
+    print("Analyzing with Claude...")
+    result = analyze_with_claude(df)
+    date_range = get_date_range(result["articles"])
 
-    if current_df.empty:
-        print("No articles in current window.")
-        return
-
-    print("Analyzing current window with Claude...")
-    result = analyze_with_claude(current_df)
-
-    prior_score = None
-    if not prior_df.empty:
-        print("Analyzing prior window with Claude...")
-        prior_result = analyze_score_only(prior_df)
-        prior_score = prior_result.get("score")
-        print(f"Prior score: {prior_score}")
-    else:
-        print("No prior window articles found — skipping prior score.")
-        prior_range = None
-
-    markdown = build_markdown(result, date_str, curr_range, prior_score, prior_range)
-    html = build_html(result, date_str, curr_range, prior_score, prior_range)
+    markdown = build_markdown(result, date_str, date_range)
+    html = build_html(result, date_str, date_range)
 
     report_file = f"report_{datetime.now().strftime('%Y%m%d_%H%M')}.md"
     with open(report_file, "w") as f:
