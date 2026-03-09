@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 
 FEEDS_FILE = "feeds.txt"
-RECIPIENT_EMAIL = "austinkhchia@gmail.com"
+RECIPIENT_EMAIL = "chiabuilds@gmail.com"
 SENDER_EMAIL = "austinkhchia@gmail.com"
 
 NET_COLORS = {
@@ -116,10 +116,10 @@ def analyze_with_claude(df: pd.DataFrame) -> dict:
                 '  "score": <integer 1-100, MUST follow scoring logic above>,\n'
                 '  "key_takeaway": "2-3 sentence executive summary that MUST align with net and score, use [N] citations",\n'
                 '  "sections": [\n'
-                '    {"title": "Key Price Trends (DRAM, NAND)", "points": ["point with citation [1]", ...]},\n'
-                '    {"title": "Supply Chain Signals", "points": ["..."]},\n'
-                '    {"title": "Demand Drivers", "points": ["..."]},\n'
-                '    {"title": "Notable Vendor Developments", "points": ["..."]}\n'
+                '    {"title": "Key Price Trends (DRAM, NAND)", "points": ["point with **bold key terms** and citation [1]", ...]},\n'
+                '    {"title": "Supply Chain Signals", "points": ["point with **bold key terms**"]},\n'
+                '    {"title": "Demand Drivers", "points": ["point with **bold key terms**"]},\n'
+                '    {"title": "Notable Vendor Developments", "points": ["point with **bold key terms**"]}\n'
                 '  ],\n'
                 '  "cited_indices": [1, 3, 5]\n'
                 "}\n\n"
@@ -186,7 +186,18 @@ def build_footnotes(articles: pd.DataFrame, cited_indices: list[int]) -> dict:
     return dict(sorted(footnotes_by_outlet.items()))
 
 
-def linkify_citations_html(text: str, articles: pd.DataFrame) -> str:
+def strip_bold_after_colon(text: str) -> str:
+    """Keep bold before first colon, remove bold markers after it."""
+    if ": " in text:
+        before, after = text.split(": ", 1)
+        after = re.sub(r"\*\*(.+?)\*\*", r"\1", after)
+        return f"{before}: {after}"
+    return text
+
+
+def md_to_html(text: str, articles: pd.DataFrame) -> str:
+    """Convert markdown bold and citations to HTML."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     def replace(match):
         idx = int(match.group(1))
         if 1 <= idx <= len(articles):
@@ -226,7 +237,7 @@ def build_markdown(result: dict, date_str: str, curr_range: tuple, prior_score: 
     score_md, _ = fmt_score_line(score, curr_range, prior_score, prior_range)
 
     lines = [
-        f"# Semiconductor Market Intelligence — {date_str}",
+        f"# Memory & Storage Market Update — {date_str}",
         f"\n## Supply: {supply} | Demand: {demand} → Net: {net_label}",
         score_md,
         f"- **Supply:** {result.get('supply_detail', '')}",
@@ -238,7 +249,7 @@ def build_markdown(result: dict, date_str: str, curr_range: tuple, prior_score: 
     for section in result["sections"]:
         lines.append(f"## {section['title']}\n")
         for point in section["points"]:
-            lines.append(f"- {point}")
+            lines.append(f"- {strip_bold_after_colon(point)}")
         lines.append("")
 
     lines.append("---\n")
@@ -270,7 +281,7 @@ def build_html(result: dict, date_str: str, curr_range: tuple, prior_score: int 
 
     sections_html = ""
     for section in result["sections"]:
-        points = "".join(f"<li>{linkify_citations_html(p, articles)}</li>" for p in section["points"])
+        points = "".join(f"<li>{md_to_html(strip_bold_after_colon(p), articles)}</li>" for p in section["points"])
         sections_html += f"<h2 style='color:#1a1a2e;'>{section['title']}</h2><ul>{points}</ul>"
 
     rows = ""
@@ -302,11 +313,11 @@ def build_html(result: dict, date_str: str, curr_range: tuple, prior_score: int 
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
 
-    key_takeaway_html = linkify_citations_html(result["key_takeaway"], articles)
+    key_takeaway_html = md_to_html(result["key_takeaway"], articles)
 
     return f"""
     <html><body style="font-family:Arial,sans-serif;max-width:700px;margin:auto;padding:20px;">
-      <h1 style="color:#1a1a2e;">Semiconductor Market Intelligence</h1>
+      <h1 style="color:#1a1a2e;">Memory & Storage Market Update</h1>
       <p style="color:#888;">{date_str}</p>
 
       <div style="background:{color};color:white;padding:16px 20px;border-radius:8px;">
@@ -394,7 +405,7 @@ def main():
         f.write(markdown)
     print(f"Report saved to {report_file}")
 
-    send_email(f"Market Intelligence Report — {date_str}", markdown, html)
+    send_email(f"Memory & Storage Market Update — {date_str}", markdown, html)
 
     print("\n" + "=" * 60)
     print(markdown)
