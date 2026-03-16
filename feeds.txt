@@ -1,5 +1,49 @@
-https://news.google.com/rss/search?q=dram+price
-https://news.google.com/rss/search?q=nand+flash+market
-https://news.google.com/rss/search?q=semiconductor+supply+chain
-https://news.google.com/rss/search?q=ai+server+demand
-https://news.google.com/rss/search?q=micron+sk+hynix+samsung+memory
+# DRAM
+https://news.google.com/rss/search?q=DRAM+price+memory
+https://news.google.com/rss/search?q=DRAM+supply+market+shortage
+
+# NAND / SSD
+https://news.google.com/rss/search?q=NAND+flash+price+supply
+https://news.google.com/rss/search?q=NAND+SSD+market+shortage
+
+# AI Server
+https://news.google.com/rss/search?q=AI+server+memory+demand
+https://news.google.com/rss/search?q=AI+chip+HBM+server+memory
+
+# HBM
+https://news.google.com/rss/search?q=HBM+memory+AI+chip
+https://news.google.com/rss/search?q=HBM4+HBM3+high+bandwidth+memory+supply
+
+# Vendors
+https://news.google.com/rss/search?q=Micron+memory+DRAM+NAND
+https://news.google.com/rss/search?q="SK+hynix"+memory+DRAM+NAND
+https://news.google.com/rss/search?q=Samsung+memory+NAND+DRAM
+https://news.google.com/rss/search?q=Kioxia+NAND+memory+flash
+https://news.google.com/rss/search?q=Seagate+"Western+Digital"+WD+storage+NAND
+https://news.google.com/rss/search?q=Kingston+Nanya+Solidigm+Sandisk+memory+DRAM+NAND
+
+# Premium Sources
+https://news.google.com/rss/search?q=trendforce+memory+DRAM+NAND
+https://news.google.com/rss/search?q=site:reuters.com+NAND+DRAM+memory+semiconductor
+https://news.google.com/rss/search?q=site:bloomberg.com+NAND+DRAM+memory+semiconductor
+https://news.google.com/rss/search?q=site:investing.com+Micron+DRAM+NAND+memory
+
+# Korean Sources
+https://news.google.com/rss/search?q=D램+낸드+반도체+가격&hl=ko&gl=KR&ceid=KR:ko
+https://news.google.com/rss/search?q=삼성+SK하이닉스+메모리+반도체&hl=ko&gl=KR&ceid=KR:ko
+https://news.google.com/rss/search?q=site:chosun.com+반도체+메모리&hl=ko&gl=KR&ceid=KR:ko
+https://news.google.com/rss/search?q=site:etnews.com+반도체+메모리&hl=ko&gl=KR&ceid=KR:ko
+
+# Japanese Sources
+https://news.google.com/rss/search?q=DRAM+NAND+半導体+価格&hl=ja&gl=JP&ceid=JP:ja
+https://news.google.com/rss/search?q=Samsung+SKハイニックス+メモリ+半導体&hl=ja&gl=JP&ceid=JP:ja
+https://news.google.com/rss/search?q=site:nikkei.com+半導体+メモリ+DRAM&hl=ja&gl=JP&ceid=JP:ja
+
+# Chinese Sources
+https://news.google.com/rss/search?q=DRAM+NAND+内存+闪存+价格&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+https://news.google.com/rss/search?q=三星+SK海力士+美光+内存+半导体&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+
+# Taiwanese Sources
+https://news.google.com/rss/search?q=DRAM+NAND+記憶體+半導體+價格&hl=zh-TW&gl=TW&ceid=TW:zh-Hant
+https://news.google.com/rss/search?q=site:digitimes.com+DRAM+NAND+memory
+https://news.google.com/rss/search?q=site:cn.ltn.com.tw+NAND+DRAM+記憶體&hl=zh-TW&gl=TW&ceid=TW:zh-Hant

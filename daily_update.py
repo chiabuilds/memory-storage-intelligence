@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 
 FEEDS_FILE = "feeds.txt"
-RECIPIENT_EMAIL = "chiabuilds@gmail.com"
+RECIPIENT_EMAIL = "austin.chia@hpe.com"
 SENDER_EMAIL = "chiabuilds@gmail.com"
 WINDOW_HOURS = 24
 
@@ -78,7 +78,8 @@ def analyze_with_claude(df: pd.DataFrame) -> dict:
         messages=[{
             "role": "user",
             "content": (
-                "You are a semiconductor market analyst evaluating conditions from a MANUFACTURER/INVESTOR perspective.\n\n"
+                "You are a semiconductor market analyst evaluating conditions from a MANUFACTURER/INVESTOR perspective.\n"
+                "Focus ONLY on NAND flash, DRAM/memory, and AI chips. Ignore unrelated semiconductor topics.\n\n"
                 "SCORING LOGIC — follow this exactly:\n"
                 "- Supply WEAKER (manufacturers cutting/constraining output) + Demand STRONGER = prices RISE = BULLISH (score 60-100)\n"
                 "- Supply STRONGER (oversupply) + Demand WEAKER = prices FALL = BEARISH (score 1-40)\n"
@@ -88,17 +89,16 @@ def analyze_with_claude(df: pd.DataFrame) -> dict:
                 "Return this exact JSON structure:\n"
                 "{\n"
                 '  "supply_signal": "stronger" | "weaker" | "same",\n'
-                '  "supply_detail": "one sentence explaining ROOT CAUSE, bold 1-2 key terms with **bold**",\n'
+                '  "supply_detail": "one sentence on ROOT CAUSE for NAND/DRAM/AI chip supply, bold 1-2 key terms with **bold**",\n'
                 '  "demand_signal": "stronger" | "weaker" | "same",\n'
-                '  "demand_detail": "one sentence explaining ROOT CAUSE, bold 1-2 key terms with **bold**",\n'
+                '  "demand_detail": "one sentence on ROOT CAUSE for NAND/DRAM/AI chip demand, bold 1-2 key terms with **bold**",\n'
                 '  "net": "bullish" | "bearish" | "balanced",\n'
                 '  "score": <integer 1-100, MUST follow scoring logic above>,\n'
-                '  "key_takeaway": "2-3 sentence executive summary that MUST align with net and score, bold 2-3 key terms with **bold**, use [N] citations",\n'
                 '  "sections": [\n'
-                '    {"title": "Key Price Trends (DRAM, NAND)", "points": ["**Bold label**: description with citation [1]", ...]},\n'
-                '    {"title": "Supply Chain Signals", "points": ["**Bold label**: description"]},\n'
-                '    {"title": "Demand Drivers", "points": ["**Bold label**: description"]},\n'
-                '    {"title": "Notable Vendor Developments", "points": ["**Bold label**: description"]}\n'
+                '    {"title": "Price Trends", "points": ["**Bold label**: description with **1-2 key highlights bolded** and citation [N]", ...]},\n'
+                '    {"title": "Demand", "points": ["**Bold label**: description with **1-2 key highlights bolded** and citation [N]"]},\n'
+                '    {"title": "Supply & Inventory", "points": ["**Bold label**: description focused on top fab makers (Samsung, SK Hynix, Micron, TSMC, Kioxia, WD) and largest module houses (Kingston, Crucial, Corsair, ADATA) with **1-2 key highlights bolded** and citation [N]"]},\n'
+                '    {"title": "Other", "points": ["**Bold label**: description with **1-2 key highlights bolded**"]}\n'
                 '  ],\n'
                 '  "cited_indices": [1, 3, 5]\n'
                 "}\n\n"
@@ -143,11 +143,19 @@ def strip_bold_after_colon(text: str) -> str:
     return text
 
 
+def expand_citations(text: str) -> str:
+    def expand(match):
+        nums = [n.strip() for n in match.group(1).split(",")]
+        return "".join(f"[{n}]" for n in nums if n.isdigit())
+    return re.sub(r"\[(\d+(?:,\s*\d+)+)\]", expand, text)
+
+
 def bold_to_html(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
 
 
 def md_to_html(text: str, articles: pd.DataFrame) -> str:
+    text = expand_citations(text)
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     def replace(match):
         idx = int(match.group(1))
@@ -156,6 +164,24 @@ def md_to_html(text: str, articles: pd.DataFrame) -> str:
             return f'<a href="{link}" style="color:#2980b9;">[{idx}]</a>'
         return match.group(0)
     return re.sub(r"\[(\d+)\]", replace, text)
+
+
+def bullet_to_html(text: str, articles: pd.DataFrame) -> str:
+    def linkify(t):
+        t = expand_citations(t)
+        def replace(match):
+            idx = int(match.group(1))
+            if 1 <= idx <= len(articles):
+                link = articles.iloc[idx - 1]["link"]
+                return f'<a href="{link}" style="color:#2980b9;">[{idx}]</a>'
+            return match.group(0)
+        return re.sub(r"\[(\d+)\]", replace, t)
+    if ": " in text:
+        before, after = text.split(": ", 1)
+        before_html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", before)
+        after_html = re.sub(r"\*\*(.+?)\*\*", r'<strong style="color:#2980b9;">\1</strong>', after)
+        return f"{before_html}: {linkify(after_html)}"
+    return linkify(re.sub(r"\*\*(.+?)\*\*", r'<strong style="color:#2980b9;">\1</strong>', text))
 
 
 def build_markdown(result: dict, date_str: str) -> str:
@@ -168,12 +194,11 @@ def build_markdown(result: dict, date_str: str) -> str:
     footnotes_by_outlet = build_footnotes(articles, result.get("cited_indices", []))
 
     lines = [
-        f"# Memory & Storage Market Update — {date_str} (Last 24hrs)",
+        f"# Memory & Storage Market: Daily Update — {date_str}",
         f"\n## Supply: {supply} | Demand: {demand} → Net: {net_label}",
         f"**Score: {score}/100**",
         f"- **Supply:** {result.get('supply_detail', '')}",
         f"- **Demand:** {result.get('demand_detail', '')}\n",
-        f"### Key Takeaway\n{result['key_takeaway']}\n",
         "---\n",
     ]
 
@@ -212,10 +237,10 @@ def build_html(result: dict, date_str: str) -> str:
     sections_html = ""
     for section in result["sections"]:
         points = "".join(
-            f"<li>{md_to_html(strip_bold_after_colon(p), articles)}</li>"
+            f"<li>{bullet_to_html(p, articles)}</li>"
             for p in section["points"]
         )
-        sections_html += f"<h2 style='color:#1a1a2e;'>{section['title']}</h2><ul>{points}</ul>"
+        sections_html += f"<h2 style='color:#1a1a2e;font-size:13px;font-family:Aptos,Arial,sans-serif;margin-bottom:4px;'>{section['title']}</h2><ul style='font-size:13px;font-family:Aptos,Arial,sans-serif;margin-top:4px;'>{points}</ul>"
 
     rows = ""
     for outlet, entries in footnotes_by_outlet.items():
@@ -246,33 +271,26 @@ def build_html(result: dict, date_str: str) -> str:
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
 
-    key_takeaway_html = md_to_html(result["key_takeaway"], articles)
-
     return f"""
-    <html><body style="font-family:Arial,sans-serif;max-width:700px;margin:auto;padding:20px;">
-      <h1 style="color:#1a1a2e;">Memory & Storage Market Update</h1>
-      <p style="color:#888;">{date_str} — Last 24 Hours</p>
+    <html><body style="font-family:Aptos,Arial,sans-serif;max-width:700px;margin:auto;padding:20px;">
+      <h1 style="color:#1a1a2e;font-family:Aptos,Arial,sans-serif;font-size:18px;">Memory & Storage Market: Daily Update</h1>
+      <p style="color:#888;font-family:Aptos,Arial,sans-serif;font-size:13px;">{date_str} — Last 24 Hours</p>
 
-      <div style="background:{color};color:white;padding:16px 20px;border-radius:8px;">
-        <div style="font-size:13px;letter-spacing:1px;opacity:0.85;">SUPPLY: {supply} &nbsp;|&nbsp; DEMAND: {demand} &nbsp;→&nbsp; NET</div>
-        <div style="font-size:24px;font-weight:bold;margin-top:4px;">{net_label} &nbsp; <span style="font-size:20px;">{score}/100</span></div>
-        <div style="font-size:13px;margin-top:10px;opacity:0.9;">&#8226; Supply: {bold_to_html(result.get('supply_detail', ''))}</div>
-        <div style="font-size:13px;opacity:0.9;">&#8226; Demand: {bold_to_html(result.get('demand_detail', ''))}</div>
-      </div>
-
-      <div style="background:#f5f5f5;border-left:4px solid {color};padding:12px 16px;margin:16px 0;">
-        <strong>Key Takeaway:</strong> {key_takeaway_html}
+      <div style="padding:12px 0 8px 0;">
+        <div style="font-size:13px;font-family:Aptos,Arial,sans-serif;color:#555;letter-spacing:1px;">SUPPLY: {supply} &nbsp;|&nbsp; DEMAND: {demand} &nbsp;→&nbsp; NET</div>
+        <div style="font-size:22px;font-weight:bold;margin-top:4px;font-family:Aptos,Arial,sans-serif;color:{color};">{net_label} &nbsp; <span style="font-size:18px;">{score}/100</span></div>
+        <div style="font-size:13px;font-family:Aptos,Arial,sans-serif;margin-top:8px;color:#333;">&#8226; Supply: {md_to_html(result.get('supply_detail', ''), articles)}</div>
+        <div style="font-size:13px;font-family:Aptos,Arial,sans-serif;color:#333;">&#8226; Demand: {md_to_html(result.get('demand_detail', ''), articles)}</div>
       </div>
 
       <hr>
       {sections_html}
       <hr>
 
-      <h2>Sources</h2>
+      <h2 style="font-size:13px;font-family:Aptos,Arial,sans-serif;">Sources</h2>
       {footnotes_html}
 
       <hr>
-      <p style="color:#aaa;font-size:12px;">Generated by daily-update script</p>
     </body></html>
     """
 
@@ -319,7 +337,7 @@ def main():
         f.write(markdown)
     print(f"Report saved to {report_file}")
 
-    send_email(f"Daily Memory & Storage Update — {date_str}", markdown, html)
+    send_email(f"Memory & Storage Market: Daily Update — {date_str}", markdown, html)
 
     print("\n" + "=" * 60)
     print(markdown)
